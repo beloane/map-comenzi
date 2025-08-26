@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="ro">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Alocator stoc – client‑side (HTML/CSS/JS)</title>
+    <style>
+      :root {
+        --bg: #0b1020;
+        --panel: #121932;
+        --muted: #8ea0c9;
+        --accent: #ffd166;
+        --ok: #06d6a0;
+        --err: #ef476f;
+        --ink: #e6eaf7;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font: 16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu,
+          Cantarell, Noto Sans, Arial;
+        background: var(--bg);
+        color: var(--ink);
+      }
+      header {
+        padding: 22px 16px;
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        border-bottom: 1px solid #1c254b;
+      }
+      header h1 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+      }
+      header .badge {
+        font-size: 12px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: #1c254b;
+        color: var(--muted);
+      }
+      main {
+        max-width: 1100px;
+        margin: 24px auto 80px;
+        padding: 0 16px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid #1c254b;
+        border-radius: 16px;
+        padding: 18px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+      }
+      .grid {
+        display: grid;
+        gap: 16px;
+      }
+      @media (min-width: 900px) {
+        .grid-2 {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+      label {
+        font-size: 13px;
+        color: var(--muted);
+        display: block;
+        margin-bottom: 6px;
+      }
+      input[type="file"],
+      select,
+      input[type="text"],
+      button {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid #1f2a52;
+        background: #0f1630;
+        color: var(--ink);
+      }
+      input::file-selector-button {
+        border: 0;
+        margin-right: 12px;
+        background: #1c254b;
+        color: var(--ink);
+        padding: 8px 12px;
+        border-radius: 8px;
+      }
+      button {
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .cta {
+        background: var(--accent);
+        color: #111;
+        border: none;
+      }
+      .ghost {
+        background: #101733;
+        color: var(--muted);
+      }
+      .ok {
+        background: var(--ok);
+        color: #08261e;
+        border: none;
+      }
+      .err {
+        background: var(--err);
+        color: #2a0e16;
+        border: none;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      .row > * {
+        flex: 1;
+      }
+      .hint {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .pill {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: #182046;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .hidden {
+        display: none !important;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      th,
+      td {
+        border-bottom: 1px solid #26305b;
+        padding: 8px 10px;
+        text-align: left;
+      }
+      thead th {
+        position: sticky;
+        top: 0;
+        background: #11183a;
+        z-index: 1;
+      }
+      .footer {
+        margin-top: 12px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .sep {
+        height: 1px;
+        background: #1c254b;
+        margin: 12px 0;
+      }
+      .tag {
+        background: #0f162f;
+        border: 1px solid #1f2a52;
+        padding: 4px 8px;
+        border-radius: 8px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+    <!-- Librării client-side (fără backend) -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  </head>
+  <body>
+    <header>
+      <h1>Alocator stoc (100% client‑side)</h1>
+      <span class="badge">Nu salvează nimic • refresh = gol</span>
+    </header>
+
+    <main class="grid grid-2">
+      <!-- STOCURI -->
+      <section class="card">
+        <h2 style="margin: 0 0 8px">1) Încarcă CSV cu stocuri pe gestiuni</h2>
+        <p class="hint">
+          Fișierul ar trebui să conțină coloane de tip:
+          <span class="pill">Gestiune</span>,
+          <span class="pill">Articol / SKU</span>,
+          <span class="pill">Cod (mărime)</span>,
+          <span class="pill">Stoc</span>, opțional
+          <span class="pill">Cod de bare</span>.<br />
+          Rândurile fără <em>Cod (mărime)</em> vor fi eliminate automat.
+          <br />Asocierea cu comenzile se face pe cheia
+          <strong>Articol–Cod</strong> <em>concatentate exact</em> (ex:
+          <code>206708-060-45-46</code>).
+        </p>
+        <div class="row">
+          <div>
+            <label for="stocksFile">CSV stocuri</label>
+            <input id="stocksFile" type="file" accept=".csv" />
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <button id="btnParseStocks" class="ghost">
+              Încarcă & configurează coloane
+            </button>
+          </div>
+        </div>
+
+        <div id="stocksMapping" class="hidden">
+          <div class="sep"></div>
+          <h3 style="margin: 0 0 8px">Mapare coloane (stocuri)</h3>
+          <div
+            class="grid"
+            style="grid-template-columns: repeat(5, 1fr); gap: 12px"
+          >
+            <div>
+              <label>Gestiune</label
+              ><select id="map_s_gestiune"></select>
+            </div>
+            <div>
+              <label>Articol / SKU</label
+              ><select id="map_s_articol"></select>
+            </div>
+            <div>
+              <label>Cod (mărime)</label
+              ><select id="map_s_cod"></select>
+            </div>
+            <div>
+              <label>Stoc (numeric)</label
+              ><select id="map_s_stoc"></select>
+            </div>
+            <div>
+              <label>Cod de bare (opțional)</label
+              ><select id="map_s_barcode"></select>
+            </div>
+          </div>
+          <div class="row" style="margin-top: 12px">
+            <button id="btnSaveStocksMap" class="ok">
+              Salvează maparea stocurilor
+            </button>
+            <span class="hint" id="stocksInfo"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- COMENZI -->
+      <section class="card">
+        <h2 style="margin: 0 0 8px">2) Încarcă comenzi (ZIP/CSV/XLSX)</h2>
+        <p class="hint">
+          Poți urca fie un <strong>ZIP</strong> cu mai multe tabele, fie un
+          singur fișier <strong>CSV</strong> sau <strong>XLSX</strong>.<br />
+          Coloane așteptate: <span class="pill">Comanda</span>,
+          <span class="pill">Data comanda</span>,
+          <span class="pill">Facturare</span>,
+          <span class="pill">Metoda de plata</span>,
+          <span class="pill">Cod produs‑mărime</span>, opțional
+          <span class="pill">Cantitate</span>. <br /><em
+            >Rândurile în care doar <u>Cod produs‑mărime</u> este complet,
+            aparțin comenzii de pe rândul de mai sus.</em
+          >
+        </p>
+        <div class="row">
+          <div>
+            <label for="ordersFile">Comenzi (ZIP/CSV/XLSX)</label>
+            <input id="ordersFile" type="file" accept=".zip,.csv,.xlsx" />
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <button id="btnParseOrders" class="ghost">
+              Încarcă & configurează coloane
+            </button>
+          </div>
+        </div>
+
+        <div id="ordersMapping" class="hidden">
+          <div class="sep"></div>
+          <h3 style="margin: 0 0 8px">Mapare coloane (comenzi)</h3>
+          <div
+            class="grid"
+            style="grid-template-columns: repeat(3, 1fr); gap: 12px"
+          >
+            <div>
+              <label>Comanda</label
+              ><select id="map_o_comanda"></select>
+            </div>
+            <div>
+              <label>Data comanda</label
+              ><select id="map_o_data"></select>
+            </div>
+            <div>
+              <label>Facturare (nume / date)</label
+              ><select id="map_o_fact"></select>
+            </div>
+            <div>
+              <label>Metoda de plata</label
+              ><select id="map_o_plata"></select>
+            </div>
+            <div>
+              <label>Cod produs‑mărime (cheie exactă)</label
+              ><select id="map_o_codprod"></select>
+            </div>
+            <div>
+              <label>Cantitate (opțional)</label
+              ><select id="map_o_qty"></select>
+            </div>
+          </div>
+          <div class="row" style="margin-top: 12px">
+            <div>
+              <label>Separator fallback Articol–Cod</label>
+              <input id="o_sep" type="text" value="-" />
+            </div>
+            <div class="hint">
+              Asocierea se face întâi pe <em>cheia completă</em> („Cod
+              produs‑mărime”). Dacă nu se găsește, se încearcă split după
+              separator (fallback).
+            </div>
+          </div>
+          <div class="row" style="margin-top: 12px">
+            <button id="btnSaveOrdersMap" class="ok">
+              Salvează maparea comenzilor
+            </button>
+            <span class="hint" id="ordersInfo"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- PROCESARE & EXPORT -->
+      <section class="card" style="grid-column: 1/-1">
+        <h2 style="margin: 0 0 8px">3) Procesează & exportă</h2>
+        <p class="hint">
+          Datele sunt procesate <strong>doar în browser</strong>. Nimic nu e
+          trimis pe server și nu se reține după refresh.
+        </p>
+        <div class="row">
+          <button id="btnProcess" class="cta" disabled>
+            Procesează & generează XLSX
+          </button>
+          <button id="btnReset" class="ghost">Reset</button>
+        </div>
+        <div class="sep"></div>
+        <div id="previewWrap" class="hidden">
+          <div
+            style="
+              display: flex;
+              gap: 8px;
+              align-items: center;
+              margin-bottom: 8px;
+            "
+          >
+            <span class="tag" id="tagStocks">Stocuri: 0</span>
+            <span class="tag" id="tagOrders">Linii comenzi: 0</span>
+            <span class="tag" id="tagAlloc">Alocări generate: 0</span>
+          </div>
+          <div
+            style="
+              max-height: 380px;
+              overflow: auto;
+              border: 1px solid #1f2a52;
+              border-radius: 12px;
+            "
+          >
+            <table id="preview">
+              <thead>
+                <tr></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="footer">
+            Poți apăsa din nou pe „Procesează & generează XLSX” dacă schimbi
+            fișierele sau mapările.
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      // ---- Utilitare UI ----
+      const $ = (sel) => document.querySelector(sel);
+      const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+      const byName = (obj, name) =>
+        obj?.[name] ??
+        obj?.[
+          Object.keys(obj).find((k) => k?.toLowerCase() === name?.toLowerCase())
+        ];
+
+      let rawStocks = []; // rânduri brute din CSV stocuri
+      let rawOrders = []; // rânduri brute combinate (ZIP/CSV/XLSX)
+      let stocksMap = null; // {gestiune, articol, cod, stoc, barcode?}
+      let ordersMap = null; // {comanda, data, fact, plata, codprod, qty, sep}
+
+      let normalizedStocks = []; // {gestiune, articol, cod, stoc, barcode, keyFull}
+      let normalizedOrders = []; // {comanda, data, fact, plata, codprod, articol?, cod?, qty, keyFull}
+
+      // ---- Parsare fișiere ----
+      function parseCSVFile(file) {
+        return new Promise((resolve, reject) => {
+          Papa.parse(file, {
+            header: true,
+            skipEmptyLines: "greedy",
+            complete: (res) => {
+              resolve(
+                res.data.filter((r) =>
+                  Object.values(r).some((v) => String(v || "").trim() !== "")
+                )
+              );
+            },
+            error: reject,
+          });
+        });
+      }
+
+      function parseCSVText(text) {
+        return new Promise((resolve) => {
+          const res = Papa.parse(text, {
+            header: true,
+            skipEmptyLines: "greedy",
+          });
+          resolve(
+            res.data.filter((r) =>
+              Object.values(r).some((v) => String(v || "").trim() !== "")
+            )
+          );
+        });
+      }
+
+      async function parseXLSXArrayBuffer(ab) {
+        const wb = XLSX.read(ab, { type: "array" });
+        const sheets = wb.SheetNames;
+        const all = [];
+        for (const name of sheets) {
+          const ws = wb.Sheets[name];
+          const json = XLSX.utils.sheet_to_json(ws, { defval: "", raw: false });
+          for (const r of json) {
+            if (Object.values(r).some((v) => String(v || "").trim() !== ""))
+              all.push(r);
+          }
+        }
+        return all;
+      }
+
+      function unionHeaders(rows) {
+        const set = new Set();
+        rows
+          .slice(0, 200)
+          .forEach((r) => Object.keys(r).forEach((k) => set.add(k)));
+        return Array.from(set);
+      }
+
+      function fillSelect(sel, headers, preferred) {
+        sel.innerHTML =
+          '<option value="">— selectează —</option>' +
+          headers.map((h) => `<option>${h}</option>`).join("");
+        if (preferred) {
+          const idx = headers.findIndex((h) =>
+            preferred.some((p) => h.toLowerCase().includes(p))
+          );
+          if (idx >= 0) sel.value = headers[idx];
+        }
+      }
+
+      function ensureNumber(v) {
+        const n = parseFloat(String(v).replace(",", "."));
+        return Number.isFinite(n) ? n : 0;
+      }
+
+      function normKey(art, cod) {
+        return `${String(art || "").trim()}-${String(
+          cod || ""
+        ).trim()}`.toLowerCase();
+      }
+
+      function normFullKey(s) {
+        return String(s || "")
+          .trim()
+          .toLowerCase();
+      }
+
+      // ---- STOCURI: încărcare + mapare ----
+      $("#btnParseStocks").addEventListener("click", async () => {
+        const f = $("#stocksFile").files?.[0];
+        if (!f) {
+          alert("Te rog selectează un CSV cu stocuri.");
+          return;
+        }
+        try {
+          rawStocks = await parseCSVFile(f);
+          const headers = unionHeaders(rawStocks);
+          $("#stocksMapping").classList.remove("hidden");
+          fillSelect($("#map_s_gestiune"), headers, [
+            "gestiune",
+            "depozit",
+            "locatie",
+            "magazin",
+            "warehouse",
+          ]);
+          fillSelect($("#map_s_articol"), headers, [
+            "articol",
+            "sku",
+            "produs",
+            "model",
+          ]);
+          fillSelect($("#map_s_cod"), headers, [
+            "cod",
+            "marime",
+            "mărime",
+            "size",
+            "nr",
+          ]);
+          fillSelect($("#map_s_stoc"), headers, [
+            "stoc",
+            "qty",
+            "cant",
+            "cantitate",
+            "quantity",
+          ]);
+          fillSelect($("#map_s_barcode"), headers, [
+            "barcode",
+            "ean",
+            "ean13",
+            "gtin",
+            "cod de bare",
+          ]);
+          $(
+            "#stocksInfo"
+          ).textContent = `Rânduri încărcate: ${rawStocks.length}`;
+          maybeEnableProcess();
+        } catch (e) {
+          console.error(e);
+          alert("Eroare la citirea CSV-ului de stocuri. Verifică fișierul.");
+        }
+      });
+
+      $("#btnSaveStocksMap").addEventListener("click", () => {
+        const m = {
+          gestiune: $("#map_s_gestiune").value,
+          articol: $("#map_s_articol").value,
+          cod: $("#map_s_cod").value,
+          stoc: $("#map_s_stoc").value,
+          barcode: $("#map_s_barcode").value || null,
+        };
+        if (!m.gestiune || !m.articol || !m.cod || !m.stoc) {
+          alert("Completează toate mapările pentru stocuri.");
+          return;
+        }
+        stocksMap = m;
+        normalizeStocks();
+        $(
+          "#stocksInfo"
+        ).textContent = `Mapare salvată • linii valide: ${normalizedStocks.length}`;
+        maybeEnableProcess();
+      });
+
+      function normalizeStocks() {
+        normalizedStocks = [];
+        for (const r of rawStocks) {
+          const gest = r[stocksMap.gestiune];
+          const art = r[stocksMap.articol];
+          const cod = r[stocksMap.cod];
+          const st = ensureNumber(r[stocksMap.stoc]);
+          const barcode = stocksMap.barcode
+            ? String(r[stocksMap.barcode] || "").trim()
+            : "";
+          if (String(cod || "").trim() === "") continue; // elimină rândurile fără cod (mărime)
+          if (!gest || !art) continue;
+          if (st > 0) {
+            const keyFull = normFullKey(
+              `${String(art).trim()}-${String(cod).trim()}`
+            );
+            normalizedStocks.push({
+              gestiune: String(gest).trim(),
+              articol: String(art).trim(),
+              cod: String(cod).trim(),
+              stoc: st,
+              barcode,
+              keyFull,
+            });
+          }
+        }
+      }
+
+      // ---- COMENZI: încărcare (ZIP/CSV/XLSX) + mapare ----
+      $("#btnParseOrders").addEventListener("click", async () => {
+        const f = $("#ordersFile").files?.[0];
+        if (!f) {
+          alert("Te rog selectează un fișier cu comenzi (ZIP/CSV/XLSX).");
+          return;
+        }
+        rawOrders = [];
+        try {
+          const ext = f.name.split(".").pop().toLowerCase();
+          if (ext === "zip") {
+            const zip = await JSZip.loadAsync(f);
+            const entries = Object.values(zip.files).filter(
+              (e) => !e.dir && /\.(csv|xlsx)$/i.test(e.name)
+            );
+            if (entries.length === 0)
+              throw new Error("Arhiva nu conține CSV/XLSX.");
+            for (const e of entries) {
+              const eext = e.name.split(".").pop().toLowerCase();
+              if (eext === "csv") {
+                const txt = await e.async("string");
+                const rows = await parseCSVText(txt);
+                rawOrders.push(...rows);
+              } else if (eext === "xlsx") {
+                const ab = await e.async("arraybuffer");
+                const rows = await parseXLSXArrayBuffer(ab);
+                rawOrders.push(...rows);
+              }
+            }
+          } else if (ext === "csv") {
+            rawOrders = await parseCSVFile(f);
+          } else if (ext === "xlsx") {
+            const ab = await f.arrayBuffer();
+            rawOrders = await parseXLSXArrayBuffer(ab);
+          } else {
+            throw new Error("Format neacceptat.");
+          }
+
+          const headers = unionHeaders(rawOrders);
+          $("#ordersMapping").classList.remove("hidden");
+          fillSelect($("#map_o_comanda"), headers, ["comanda", "order"]);
+          fillSelect($("#map_o_data"), headers, [
+            "data",
+            "date",
+            "creat",
+            "created",
+          ]);
+          fillSelect($("#map_o_fact"), headers, [
+            "fact",
+            "billing",
+            "client",
+            "nume",
+          ]);
+          fillSelect($("#map_o_plata"), headers, [
+            "plata",
+            "payment",
+            "metoda",
+          ]);
+          fillSelect($("#map_o_codprod"), headers, [
+            "cod produs",
+            "sku-size",
+            "sku marime",
+            "product code",
+            "cod produs-marime",
+            "sku sized",
+          ]);
+          fillSelect($("#map_o_qty"), headers, [
+            "cant",
+            "qty",
+            "quantity",
+            "buc",
+          ]);
+
+          $(
+            "#ordersInfo"
+          ).textContent = `Rânduri încărcate: ${rawOrders.length}`;
+          maybeEnableProcess();
+        } catch (e) {
+          console.error(e);
+          alert("Eroare la citirea fișierelor de comenzi: " + e.message);
+        }
+      });
+
+      $("#btnSaveOrdersMap").addEventListener("click", () => {
+        const m = {
+          comanda: $("#map_o_comanda").value,
+          data: $("#map_o_data").value,
+          fact: $("#map_o_fact").value,
+          plata: $("#map_o_plata").value,
+          codprod: $("#map_o_codprod").value,
+          qty: $("#map_o_qty").value || null,
+          sep: $("#o_sep").value || "-",
+        };
+        if (!m.comanda || !m.data || !m.fact || !m.plata || !m.codprod) {
+          alert("Completează mapările esențiale din comenzi.");
+          return;
+        }
+        ordersMap = m;
+        normalizeOrders();
+        $(
+          "#ordersInfo"
+        ).textContent = `Mapare salvată • linii produse: ${normalizedOrders.length}`;
+        maybeEnableProcess();
+      });
+
+      function normalizeOrders() {
+        normalizedOrders = [];
+        let carry = { comanda: "", data: "", fact: "", plata: "" };
+        for (const r of rawOrders) {
+          const cur = {
+            comanda: String(r[ordersMap.comanda] ?? "").trim(),
+            data: String(r[ordersMap.data] ?? "").trim(),
+            fact: String(r[ordersMap.fact] ?? "").trim(),
+            plata: String(r[ordersMap.plata] ?? "").trim(),
+            codprod: String(r[ordersMap.codprod] ?? "").trim(),
+            qty: ordersMap.qty ? ensureNumber(r[ordersMap.qty]) : 1,
+          };
+          const hasHeaderInfo =
+            cur.comanda || cur.data || cur.fact || cur.plata;
+          if (hasHeaderInfo) {
+            carry = {
+              comanda: cur.comanda || carry.comanda,
+              data: cur.data || carry.data,
+              fact: cur.fact || carry.fact,
+              plata: cur.plata || carry.plata,
+            };
+          }
+          if (cur.codprod) {
+            const keyFull = normFullKey(cur.codprod);
+            // Fallback split DOAR pentru coloane de afișare dacă nu găsim în stoc
+            const { articol, cod } = splitArticolCod(
+              cur.codprod,
+              ordersMap.sep
+            );
+            normalizedOrders.push({
+              comanda: carry.comanda,
+              data: carry.data,
+              fact: carry.fact,
+              plata: carry.plata,
+              codprod: cur.codprod,
+              articol,
+              cod,
+              qty: Math.max(1, Math.round(cur.qty || 1)),
+              keyFull,
+            });
+          }
+        }
+      }
+
+      function splitArticolCod(v, sep) {
+        const s = String(v || "").trim();
+        if (!sep) {
+          sep = "-";
+        }
+        const i = s.lastIndexOf(sep);
+        if (i > 0) {
+          return {
+            articol: s.slice(0, i).trim(),
+            cod: s.slice(i + sep.length).trim(),
+          };
+        }
+        return { articol: s, cod: "" };
+      }
+
+      function maybeEnableProcess() {
+        $("#btnProcess").disabled = !(stocksMap && ordersMap);
+      }
+
+      // ---- Alocare stoc ----
+      function buildInventoryMap() {
+        // map: keyFull (articol-cod exact) -> [{gestiune, qty, articol, cod, barcode} ...], sortate desc după qty
+        const map = new Map();
+        for (const r of normalizedStocks) {
+          const key = r.keyFull;
+          if (!map.has(key)) map.set(key, []);
+          map
+            .get(key)
+            .push({
+              gestiune: r.gestiune,
+              qty: r.stoc,
+              articol: r.articol,
+              cod: r.cod,
+              barcode: r.barcode,
+            });
+        }
+        for (const arr of map.values()) {
+          arr.sort((a, b) => b.qty - a.qty);
+        }
+        return map;
+      }
+
+      function allocate() {
+        const inv = buildInventoryMap();
+        const results = [];
+        const uncovered = [];
+        const orderPref = new Map(); // comanda -> gestiune preferata
+
+        for (const line of normalizedOrders) {
+          // candidati pentru cheia completa, apoi fallback
+          let pools = inv.get(line.keyFull) || [];
+          if (!pools.length && line.articol) {
+            pools = inv.get(normFullKey(`${line.articol}-${line.cod}`)) || [];
+          }
+
+          let need = Math.max(1, line.qty | 0);
+          let left = need;
+
+          // construim o ordine de alocare: 1) gestiunea preferata pe comanda (daca exista in pools), 2) restul, desc dupa qty
+          let ordered = [];
+          const pref = orderPref.get(line.comanda) || null;
+
+          const poolsSorted = [...pools].sort((a, b) => b.qty - a.qty);
+
+          function takeFromGestName(name) {
+            const idx = poolsSorted.findIndex(
+              (p) => p.gestiune === name && p.qty > 0
+            );
+            if (idx >= 0) {
+              ordered.push(poolsSorted[idx]);
+              poolsSorted.splice(idx, 1);
+            }
+          }
+
+          if (pref) {
+            takeFromGestName(pref);
+          }
+
+          if (!pref) {
+            // incearca sa alegi o gestiune care acopera integral linia
+            const fullIdx = poolsSorted.findIndex((p) => p.qty >= left);
+            if (fullIdx >= 0) {
+              orderPref.set(line.comanda, poolsSorted[fullIdx].gestiune);
+              takeFromGestName(poolsSorted[fullIdx].gestiune);
+            } else if (poolsSorted.length) {
+              // altfel alege cea cu cel mai mare stoc
+              orderPref.set(line.comanda, poolsSorted[0].gestiune);
+              takeFromGestName(poolsSorted[0].gestiune);
+            }
+          }
+
+          // apoi restul gestiunilor in ordinea desc a stocului
+          ordered.push(...poolsSorted);
+
+          for (const p of ordered) {
+            if (left <= 0) break;
+            const take = Math.min(p.qty, left);
+            if (take > 0) {
+              p.qty -= take;
+              left -= take;
+              results.push(rowOut(line, p, take));
+            }
+          }
+
+          if (left > 0) {
+            // nu avem destul stoc -> marchează restant
+            results.push(
+              rowOut(
+                line,
+                {
+                  gestiune: "FĂRĂ STOC",
+                  articol: line.articol,
+                  cod: line.cod,
+                  barcode: "",
+                },
+                left
+              )
+            );
+            uncovered.push({ ...line, missing: left });
+          }
+
+          // curăță pool-urile epuizate din ambele chei posibile
+          const key1 = line.keyFull;
+          const key2 = normFullKey(`${line.articol}-${line.cod}`);
+          for (const k of [key1, key2]) {
+            if (inv.has(k)) {
+              const filtered = inv.get(k).filter((p) => p.qty > 0);
+              if (filtered.length) inv.set(k, filtered);
+              else inv.delete(k);
+            }
+          }
+        }
+
+        // Stoc rămas (după alocare)
+        const leftover = [];
+        for (const [key, arr] of Array.from(inv.entries())) {
+          for (const p of arr) {
+            if (p.qty > 0) {
+              const [art, cod] = key.split(/-(?=[^-]+$)/);
+              leftover.push({
+                articol: p.articol || art,
+                cod: p.cod || cod,
+                gestiune: p.gestiune,
+                stoc_ramas: p.qty,
+              });
+            }
+          }
+        }
+        return { results, uncovered, leftover };
+      }
+
+      function rowOut(line, stock, qty) {
+        const articol = stock.articol || line.articol;
+        const link = `https://sneaker-store.ro/produse?c=${encodeURIComponent(
+          articol
+        )}`;
+        return {
+          Comanda: line.comanda,
+          Articol: articol,
+          Cod: stock.cod || line.cod,
+          "Cod-Produs": line.codprod,
+          "Link produs": link,
+          "Cod de bare": stock.barcode || "",
+          Gestiune: stock.gestiune,
+          "Nr cantitate": qty,
+          "Data comanda": line.data,
+          Facturare: line.fact,
+          "Metoda de plata": line.plata,
+        };
+      }
+
+      // ---- Export & preview ----
+      function renderPreview(rows) {
+        const preview = $("#preview");
+        const thead = preview.querySelector("thead tr");
+        const tbody = preview.querySelector("tbody");
+        tbody.innerHTML = "";
+        thead.innerHTML = "";
+        if (!rows.length) {
+          thead.innerHTML = "<th>Nimic de afișat</th>";
+          return;
+        }
+        const cols = Object.keys(rows[0]);
+        cols.forEach((c) => {
+          const th = document.createElement("th");
+          th.textContent = c;
+          thead.appendChild(th);
+        });
+        rows.slice(0, 500).forEach((r) => {
+          const tr = document.createElement("tr");
+          cols.forEach((c) => {
+            const td = document.createElement("td");
+            td.textContent = r[c];
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+      }
+
+      function downloadXLSX(sheets) {
+        const wb = XLSX.utils.book_new();
+        for (const { name, rows } of sheets) {
+          const ws = XLSX.utils.json_to_sheet(rows);
+          XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31));
+        }
+        XLSX.writeFile(
+          wb,
+          `alocare_stoc_${new Date().toISOString().slice(0, 10)}.xlsx`
+        );
+      }
+
+      $("#btnProcess").addEventListener("click", () => {
+        if (!normalizedStocks.length || !normalizedOrders.length) {
+          alert("Încarcă și mapează întâi stocurile și comenzile.");
+          return;
+        }
+        const { results, uncovered, leftover } = allocate();
+        $("#previewWrap").classList.remove("hidden");
+        $("#tagStocks").textContent = `Stocuri: ${normalizedStocks.length}`;
+        $(
+          "#tagOrders"
+        ).textContent = `Linii comenzi: ${normalizedOrders.length}`;
+        $("#tagAlloc").textContent = `Alocări generate: ${results.length}`;
+        renderPreview(results);
+        downloadXLSX([
+          { name: "Alocari", rows: results },
+          {
+            name: "FaraStoc",
+            rows: uncovered.map((u) => ({
+              Comanda: u.comanda,
+              Articol: u.articol,
+              Cod: u.cod,
+              "Cod-Produs": u.codprod,
+              "Nr lipsa": u.missing,
+              "Data comanda": u.data,
+              Facturare: u.fact,
+              "Metoda de plata": u.plata,
+            })),
+          },
+          { name: "StocRamas", rows: leftover },
+        ]);
+      });
+
+      $("#btnReset").addEventListener("click", () => {
+        rawStocks = [];
+        rawOrders = [];
+        stocksMap = null;
+        ordersMap = null;
+        normalizedStocks = [];
+        normalizedOrders = [];
+        $("#stocksFile").value = "";
+        $("#ordersFile").value = "";
+        $("#stocksMapping").classList.add("hidden");
+        $("#ordersMapping").classList.add("hidden");
+        $("#previewWrap").classList.add("hidden");
+        $("#btnProcess").disabled = true;
+      });
+    </script>
+  </body>
+</html>
