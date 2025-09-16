@@ -108,7 +108,7 @@
         border: none;
       }
       .err {
-        background: var(--err);
+        background: #ef476f;
         color: #2a0e16;
         border: none;
       }
@@ -169,38 +169,6 @@
         border-radius: 8px;
         color: var(--muted);
         font-size: 12px;
-      }
-      /* Prioritate gestiuni */
-      .plist {
-        list-style: none;
-        margin: 8px 0 0;
-        padding: 0;
-        border: 1px solid #1f2a52;
-        border-radius: 12px;
-        max-height: 220px;
-        overflow: auto;
-      }
-      .plist li {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        padding: 8px 10px;
-        border-bottom: 1px solid #26305b;
-      }
-      .plist li:last-child {
-        border-bottom: none;
-      }
-      .plist .name {
-        font-weight: 600;
-      }
-      .plist .controls {
-        display: flex;
-        gap: 6px;
-      }
-      .plist .controls button {
-        width: auto;
-        padding: 4px 8px;
       }
     </style>
     <!-- Librării client-side (fără backend) -->
@@ -274,25 +242,6 @@
               Salvează maparea stocurilor
             </button>
             <span class="hint" id="stocksInfo"></span>
-          </div>
-
-          <!-- PRIORITATE GESTIUNI -->
-          <div id="gestPriority" class="hidden">
-            <div class="sep"></div>
-            <h3 style="margin: 0 0 8px">Prioritate gestiuni (opțional)</h3>
-            <p class="hint">
-              Reordonează gestiunile: se alocă în ordinea setată aici; la
-              egalitate, se preferă stocul mai mare. Dacă nu setezi nimic, se
-              folosește doar stoc descrescător.
-            </p>
-            <ul id="gestList" class="plist"></ul>
-            <div class="row" style="margin-top: 8px">
-              <button id="btnSaveGestOrder" class="ok">
-                Salvează prioritatea
-              </button>
-              <button id="btnClearGestOrder" class="ghost">Resetează</button>
-              <span class="hint" id="gestInfo"></span>
-            </div>
           </div>
         </div>
       </section>
@@ -404,7 +353,6 @@
             <span class="tag" id="tagStocks">Stocuri: 0</span>
             <span class="tag" id="tagOrders">Linii comenzi: 0</span>
             <span class="tag" id="tagAlloc">Alocări generate: 0</span>
-            <span class="tag" id="tagPref">Prioritate gestiuni: —</span>
           </div>
           <div
             style="
@@ -430,21 +378,17 @@
     </main>
 
     <script>
-      // ---- Utilitare UI ----
       const $ = (sel) => document.querySelector(sel);
       const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-      let rawStocks = []; // rânduri brute din CSV stocuri
-      let rawOrders = []; // rânduri brute combinate (ZIP/CSV/XLSX)
+      let rawStocks = [];
+      let rawOrders = [];
       let stocksMap = null; // {gestiune, articol, cod, stoc, barcode?}
       let ordersMap = null; // {comanda, data, fact, plata, codprod, qty, sep}
 
       let normalizedStocks = []; // {gestiune, articol, cod, stoc, barcode, keyFull}
-      let normalizedOrders = []; // {comanda, data, fact, plata, codprod, articol?, cod?, qty, keyFull}
-      let gestPriority = []; // listă ordonată de gestiuni (opțional)
-      let gestDraft = []; // listă pentru UI reorder
+      let normalizedOrders = []; // {comanda, data, fact, plata, codprod, articol, cod, qty, keyFull}
 
-      // ---- Parsare fișiere ----
       function parseCSVFile(file) {
         return new Promise((resolve, reject) => {
           Papa.parse(file, {
@@ -515,14 +459,13 @@
         const n = parseFloat(String(v).replace(",", "."));
         return Number.isFinite(n) ? n : 0;
       }
-
       function normFullKey(s) {
         return String(s || "")
           .trim()
           .toLowerCase();
       }
 
-      // ---- STOCURI: încărcare + mapare ----
+      // ---- STOCURI ----
       $("#btnParseStocks").addEventListener("click", async () => {
         const f = $("#stocksFile").files?.[0];
         if (!f) {
@@ -594,8 +537,6 @@
         $(
           "#stocksInfo"
         ).textContent = `Mapare salvată • linii valide: ${normalizedStocks.length}`;
-        // pregătește prioritatea de gestiuni
-        setupGestiuniPriorityUI();
         maybeEnableProcess();
       });
 
@@ -609,7 +550,7 @@
           const barcode = stocksMap.barcode
             ? String(r[stocksMap.barcode] || "").trim()
             : "";
-          if (String(cod || "").trim() === "") continue; // elimină rândurile fără cod (mărime)
+          if (String(cod || "").trim() === "") continue;
           if (!gest || !art) continue;
           if (st > 0) {
             const keyFull = normFullKey(
@@ -627,72 +568,7 @@
         }
       }
 
-      // ---- UI Prioritate gestiuni ----
-      function uniqueGestiuni() {
-        return Array.from(new Set(normalizedStocks.map((x) => x.gestiune)));
-      }
-
-      function setupGestiuniPriorityUI() {
-        const list = uniqueGestiuni();
-        if (!list.length) {
-          $("#gestPriority").classList.add("hidden");
-          return;
-        }
-        gestDraft = [...list];
-        renderGestList();
-        $("#gestPriority").classList.remove("hidden");
-        updateGestInfo();
-      }
-
-      function renderGestList() {
-        const ul = $("#gestList");
-        ul.innerHTML = "";
-        gestDraft.forEach((name, idx) => {
-          const li = document.createElement("li");
-          const left = document.createElement("div");
-          left.className = "name";
-          left.textContent = name;
-          const right = document.createElement("div");
-          right.className = "controls";
-          const up = document.createElement("button");
-          up.textContent = "↑";
-          up.addEventListener("click", () => moveGest(idx, -1));
-          const down = document.createElement("button");
-          down.textContent = "↓";
-          down.addEventListener("click", () => moveGest(idx, +1));
-          right.appendChild(up);
-          right.appendChild(down);
-          li.appendChild(left);
-          li.appendChild(right);
-          ul.appendChild(li);
-        });
-      }
-
-      function moveGest(i, delta) {
-        const j = i + delta;
-        if (j < 0 || j >= gestDraft.length) return;
-        const tmp = gestDraft[i];
-        gestDraft[i] = gestDraft[j];
-        gestDraft[j] = tmp;
-        renderGestList();
-      }
-
-      $("#btnSaveGestOrder").addEventListener("click", () => {
-        gestPriority = [...gestDraft];
-        updateGestInfo();
-      });
-      $("#btnClearGestOrder").addEventListener("click", () => {
-        gestPriority = [];
-        updateGestInfo();
-      });
-
-      function updateGestInfo() {
-        $("#gestInfo").textContent = gestPriority.length
-          ? `Ordine setată: ${gestPriority.join(" › ")}`
-          : "Prioritate dezactivată (se folosește stoc descrescător)";
-      }
-
-      // ---- COMENZI: încărcare (ZIP/CSV/XLSX) + mapare ----
+      // ---- COMENZI ----
       $("#btnParseOrders").addEventListener("click", async () => {
         const f = $("#ordersFile").files?.[0];
         if (!f) {
@@ -756,7 +632,6 @@
             "sku marime",
             "product code",
             "cod produs-marime",
-            "sku sized",
             "produs-marime",
           ]);
           fillSelect($("#map_o_qty"), headers, [
@@ -808,7 +683,9 @@
             fact: String(r[ordersMap.fact] ?? "").trim(),
             plata: String(r[ordersMap.plata] ?? "").trim(),
             codprod: String(r[ordersMap.codprod] ?? "").trim(),
-            qty: ordersMap.qty ? ensureNumber(r[ordersMap.qty]) : 1,
+            qty: ordersMap.qty
+              ? Math.max(1, Math.round(ensureNumber(r[ordersMap.qty])))
+              : 1,
           };
           const hasHeaderInfo =
             cur.comanda || cur.data || cur.fact || cur.plata;
@@ -834,7 +711,7 @@
               codprod: cur.codprod,
               articol,
               cod,
-              qty: Math.max(1, Math.round(cur.qty || 1)),
+              qty: cur.qty,
               keyFull,
             });
           }
@@ -860,7 +737,7 @@
         $("#btnProcess").disabled = !(stocksMap && ordersMap);
       }
 
-      // ---- Alocare stoc ----
+      // ---- Inventory structures ----
       function buildInventoryMap() {
         const map = new Map();
         for (const r of normalizedStocks) {
@@ -876,118 +753,33 @@
               barcode: r.barcode,
             });
         }
-        for (const arr of map.values()) arr.sort((a, b) => b.qty - a.qty);
         return map;
       }
 
-      function allocate() {
-        const inv = buildInventoryMap();
-        const results = [];
-        const uncovered = [];
-        const orderPref = new Map(); // comanda -> gestiune preferata
-        const rank = (g) => {
-          const i = gestPriority.indexOf(g);
-          return i < 0 ? Number.POSITIVE_INFINITY : i;
-        };
+      function buildViews(inv) {
+        // per gestiune: keyFull -> same pool object; and totals per SKU across sizes
+        const perGest = new Map();
+        const skuTotals = new Map();
+        for (const [key, pools] of inv.entries()) {
+          for (const p of pools) {
+            if (!perGest.has(p.gestiune)) perGest.set(p.gestiune, new Map());
+            perGest.get(p.gestiune).set(key, p);
+            if (!skuTotals.has(p.gestiune))
+              skuTotals.set(p.gestiune, new Map());
+            const tm = skuTotals.get(p.gestiune);
+            tm.set(p.articol, (tm.get(p.articol) || 0) + p.qty);
+          }
+        }
+        return { perGest, skuTotals };
+      }
 
+      function groupOrders() {
+        const m = new Map();
         for (const line of normalizedOrders) {
-          let pools = inv.get(line.keyFull) || [];
-          if (!pools.length && line.articol) {
-            pools = inv.get(normFullKey(`${line.articol}-${line.cod}`)) || [];
-          }
-
-          let left = Math.max(1, line.qty | 0);
-          let ordered = [];
-
-          // Sortează candidații după: 1) rank gestiune (prioritate setată de utilizator), 2) stoc descrescător
-          let poolsSorted = [...pools].sort((a, b) => {
-            const ra = rank(a.gestiune),
-              rb = rank(b.gestiune);
-            if (ra !== rb) return ra - rb;
-            return b.qty - a.qty;
-          });
-
-          const pref = orderPref.get(line.comanda) || null;
-          if (pref) {
-            const idx = poolsSorted.findIndex(
-              (p) => p.gestiune === pref && p.qty > 0
-            );
-            if (idx >= 0) {
-              ordered.push(poolsSorted[idx]);
-              poolsSorted.splice(idx, 1);
-            }
-          }
-
-          if (!pref) {
-            // dacă există o gestiune care acoperă integral linia, seteaz-o ca preferată; altfel prima din listă
-            const full = poolsSorted.find((p) => p.qty >= left);
-            if (full) {
-              orderPref.set(line.comanda, full.gestiune);
-              ordered.push(full);
-              poolsSorted = poolsSorted.filter((p) => p !== full);
-            } else if (poolsSorted.length) {
-              orderPref.set(line.comanda, poolsSorted[0].gestiune);
-              ordered.push(poolsSorted.shift());
-            }
-          }
-
-          // restul în ordinea stabilită
-          ordered.push(...poolsSorted);
-
-          for (const p of ordered) {
-            if (left <= 0) break;
-            const take = Math.min(p.qty, left);
-            if (take > 0) {
-              p.qty -= take;
-              left -= take;
-              results.push(rowOut(line, p, take));
-            }
-          }
-
-          if (left > 0) {
-            results.push(
-              rowOut(
-                line,
-                {
-                  gestiune: "FĂRĂ STOC",
-                  articol: line.articol,
-                  cod: line.cod,
-                  barcode: "",
-                },
-                left
-              )
-            );
-            uncovered.push({ ...line, missing: left });
-          }
-
-          // curățare pool-uri epuizate pentru ambele chei
-          const key1 = line.keyFull,
-            key2 = normFullKey(`${line.articol}-${line.cod}`);
-          for (const k of [key1, key2]) {
-            if (inv.has(k)) {
-              const filtered = inv.get(k).filter((p) => p.qty > 0);
-              if (filtered.length) inv.set(k, filtered);
-              else inv.delete(k);
-            }
-          }
+          if (!m.has(line.comanda)) m.set(line.comanda, []);
+          m.get(line.comanda).push(line);
         }
-
-        // Stoc rămas
-        const leftover = [];
-        for (const [key, arr] of Array.from(inv.entries())) {
-          for (const p of arr) {
-            if (p.qty > 0) {
-              const [art, cod] = key.split(/-(?=[^-]+$)/);
-              leftover.push({
-                articol: p.articol || art,
-                cod: p.cod || cod,
-                gestiune: p.gestiune,
-                stoc_ramas: p.qty,
-              });
-            }
-          }
-        }
-        return { results, uncovered, leftover };
+        return Array.from(m.entries());
       }
 
       function rowOut(line, stock, qty) {
@@ -1008,6 +800,178 @@
           Facturare: line.fact,
           "Metoda de plata": line.plata,
         };
+      }
+
+      function allocateLineByRules(
+        line,
+        left,
+        inv,
+        perGest,
+        skuTotals,
+        outRows
+      ) {
+        // Rule 1: gestiuni cu total pe SKU ∈ {1,2} și cu stoc pe mărimea cerută
+        const low = [];
+        for (const [gest, kmap] of perGest.entries()) {
+          const pool = kmap.get(line.keyFull);
+          if (pool && pool.qty > 0) {
+            const totalSKU = skuTotals.get(gest)?.get(line.articol) || 0;
+            if (totalSKU === 1 || totalSKU === 2) {
+              low.push({ gest, pool, totalSKU });
+            }
+          }
+        }
+        low.sort((a, b) => a.totalSKU - b.totalSKU || b.pool.qty - a.pool.qty);
+        for (const c of low) {
+          if (left <= 0) break;
+          const take = Math.min(c.pool.qty, left);
+          if (take > 0) {
+            c.pool.qty -= take;
+            left -= take;
+            outRows.push(rowOut(line, c.pool, take));
+            const tm = skuTotals.get(c.gest);
+            tm.set(line.articol, (tm.get(line.articol) || 0) - take);
+          }
+        }
+        // Rule 2: restul, desc după stoc pe mărimea cerută
+        if (left > 0) {
+          const others = [];
+          const lowSet = new Set(low.map((x) => x.gest));
+          for (const [gest, kmap] of perGest.entries()) {
+            if (lowSet.has(gest)) continue;
+            const pool = kmap.get(line.keyFull);
+            if (pool && pool.qty > 0) {
+              others.push({ gest, pool });
+            }
+          }
+          others.sort((a, b) => b.pool.qty - a.pool.qty);
+          for (const c of others) {
+            if (left <= 0) break;
+            const take = Math.min(c.pool.qty, left);
+            if (take > 0) {
+              c.pool.qty -= take;
+              left -= take;
+              outRows.push(rowOut(line, c.pool, take));
+              const tm = skuTotals.get(c.gest);
+              tm.set(line.articol, (tm.get(line.articol) || 0) - take);
+            }
+          }
+        }
+        return left;
+      }
+
+      function allocate() {
+        const inv = buildInventoryMap();
+        const { perGest, skuTotals } = buildViews(inv);
+        const results = [];
+        const uncovered = [];
+
+        const orders = groupOrders();
+        for (const [orderId, lines] of orders) {
+          // Prima regulă: caută o gestiune care poate acoperi TOATE liniile din comandă
+          const candidates = [];
+          for (const gest of perGest.keys()) {
+            let ok = true;
+            let tot = 0;
+            for (const line of lines) {
+              const need = Math.max(1, line.qty | 0);
+              const p = perGest.get(gest).get(line.keyFull);
+              if (!p || p.qty < need) {
+                ok = false;
+                break;
+              }
+              tot += p.qty;
+            }
+            if (ok) candidates.push({ gest, tot });
+          }
+          if (candidates.length) {
+            candidates.sort((a, b) => b.tot - a.tot);
+            const chosen = candidates[0].gest;
+            for (const line of lines) {
+              const need = Math.max(1, line.qty | 0);
+              const p = perGest.get(chosen).get(line.keyFull);
+              const take = Math.min(p.qty, need);
+              if (take > 0) {
+                p.qty -= take;
+                results.push(rowOut(line, p, take));
+                const tm = skuTotals.get(chosen);
+                tm.set(line.articol, (tm.get(line.articol) || 0) - take);
+              }
+              const left = need - take;
+              if (left > 0) {
+                // teoretic nu se întâmplă, dar ca fallback aplic regulile 1&2
+                let rest = allocateLineByRules(
+                  line,
+                  left,
+                  inv,
+                  perGest,
+                  skuTotals,
+                  results
+                );
+                if (rest > 0) {
+                  results.push(
+                    rowOut(
+                      line,
+                      {
+                        gestiune: "FĂRĂ STOC",
+                        articol: line.articol,
+                        cod: line.cod,
+                        barcode: "",
+                      },
+                      rest
+                    )
+                  );
+                  uncovered.push({ ...line, missing: rest });
+                }
+              }
+            }
+            continue; // comanda următoare
+          }
+
+          // Altfel: per linie, aplica regulile 1 & 2
+          for (const line of lines) {
+            let left = Math.max(1, line.qty | 0);
+            left = allocateLineByRules(
+              line,
+              left,
+              inv,
+              perGest,
+              skuTotals,
+              results
+            );
+            if (left > 0) {
+              results.push(
+                rowOut(
+                  line,
+                  {
+                    gestiune: "FĂRĂ STOC",
+                    articol: line.articol,
+                    cod: line.cod,
+                    barcode: "",
+                  },
+                  left
+                )
+              );
+              uncovered.push({ ...line, missing: left });
+            }
+          }
+        }
+
+        // Stoc rămas (după alocare)
+        const leftover = [];
+        for (const [key, arr] of Array.from(inv.entries())) {
+          for (const p of arr) {
+            if (p.qty > 0) {
+              leftover.push({
+                articol: p.articol,
+                cod: p.cod,
+                gestiune: p.gestiune,
+                stoc_ramas: p.qty,
+              });
+            }
+          }
+        }
+        return { results, uncovered, leftover };
       }
 
       // ---- Export & preview ----
@@ -1062,9 +1026,6 @@
           "#tagOrders"
         ).textContent = `Linii comenzi: ${normalizedOrders.length}`;
         $("#tagAlloc").textContent = `Alocări generate: ${results.length}`;
-        $("#tagPref").textContent = gestPriority.length
-          ? `Prioritate gestiuni: ${gestPriority.length}`
-          : "Prioritate gestiuni: —";
         renderPreview(results);
         downloadXLSX([
           { name: "Alocari", rows: results },
@@ -1092,13 +1053,10 @@
         ordersMap = null;
         normalizedStocks = [];
         normalizedOrders = [];
-        gestPriority = [];
-        gestDraft = [];
         $("#stocksFile").value = "";
         $("#ordersFile").value = "";
         $("#stocksMapping").classList.add("hidden");
         $("#ordersMapping").classList.add("hidden");
-        $("#gestPriority").classList.add("hidden");
         $("#previewWrap").classList.add("hidden");
         $("#btnProcess").disabled = true;
       });
